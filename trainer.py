@@ -12,6 +12,7 @@ class trainer:
         self.learning_rate = learning_rate
         self.optimizer = optimizer
         self.criterion = loss
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.train_total_step = None
         self.val_total_step = None
 
@@ -21,6 +22,9 @@ class trainer:
         self.train_acc = []
 
     def train(self, trainset, validset):
+        early_stopping = EarlyStopping(10, 10)
+        self.model = self.model.to(self.device)
+
         self.train_total_step = len(trainset)
         self.val_total_step = len(validset)
 
@@ -40,12 +44,15 @@ class trainer:
             loss, val_correct, val_running_loss, val_total = self.valid(loss, val_correct, val_running_loss, val_total,
                                                                         validset)
 
-        self.save_model_result(train_correct, train_running_loss, train_total, val_correct, val_running_loss, val_total)
+            self.save_model_result(train_correct, train_running_loss, train_total, val_correct, val_running_loss,
+                                   val_total)
 
-        batch_loss = 0
-        total_t = 0
-        correct_t = 0
-        print("Iteration: " + str(epoch + 1), " LOSS : ", loss)
+            print("Iteration: " + str(epoch + 1), " LOSS : ", loss)
+
+            # early_stopping(train_running_loss, val_running_loss)
+            # if early_stopping.early_stop:
+            # print("We are at epoch:", epoch)
+            # break
 
     def run_train_epoch(self, train_correct, train_running_loss, train_total, trainset):
         for (inputs, label) in trainset:
@@ -56,6 +63,12 @@ class trainer:
 
             self.optimizer.zero_grad()
             loss = self.criterion(outputs, label)
+
+            l1_lambda = 0.001
+            # l1_norm = sum(torch.linalg.norm(p, 1) for p in self.model.parameters())
+            l2_norm = sum(torch.linalg.norm(p, 2) for p in self.model.parameters())
+
+            loss = loss + l1_lambda * l2_norm
 
             loss.retain_grad()
             loss.backward()
@@ -70,14 +83,18 @@ class trainer:
     def save_model_result(self, train_correct, train_running_loss, train_total, val_correct, val_running_loss,
                           val_total):
         self.train_acc.append(100 * train_correct / train_total)
-        self.train_loss.append(train_running_loss / self.total_step)
+        self.train_loss.append(train_running_loss / self.train_total_step)
         self.val_acc.append(100 * val_correct / val_total)
-        self.val_loss.append(val_running_loss / self.total_step)
+        self.val_loss.append(val_running_loss / self.val_total_step)
         print(f'\ntrain loss: {np.mean(self.train_loss):.4f}, train acc: {(100 * train_correct / train_total):.4f}')
         print(f'\nvalidation loss: {np.mean(self.val_loss):.4f}, validation acc: {(100 * val_correct / val_total):.4f}')
 
     def valid(self, loss, val_correct, val_running_loss, val_total, validset):
         for (images, labels) in validset:
+            images, labels = Variable(images.float()), Variable(labels)
+
+            images = F.normalize(images)
+
             outputs = self.model(images)
             loss = self.criterion(outputs, labels)
 
@@ -86,6 +103,5 @@ class trainer:
             val_correct += torch.sum(pred == labels).item()
             val_total += labels.size(0)
 
-            self.val_loss.append(loss)
-            self.val_acc.append()
         return loss, val_correct, val_running_loss, val_total
+

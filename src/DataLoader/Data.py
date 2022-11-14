@@ -39,8 +39,8 @@ class Data:
 
         df = torch.from_numpy(np.array(self.train_data))
         # splitting label and data
+        df = df.to(torch.device("cuda:0" if torch.cuda.is_available() else "cpu"))
         df = TensorDataset(df[:, 1:], df[:, 0])
-
         train = torch.utils.data.DataLoader(df, sampler=train_sample, batch_size=batch_size)
         valid = torch.utils.data.DataLoader(df, sampler=valid_sample, batch_size=batch_size)
         test = torch.utils.data.DataLoader(self.test_data)
